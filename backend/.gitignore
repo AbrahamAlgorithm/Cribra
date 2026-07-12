@@ -1,0 +1,22 @@
+# Environment — never commit secrets
+.env
+
+# Internal build docs — not committed
+PROMPTS.md
+SPEC.md
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+
+# Vector store data
+data/chroma/*
+!data/chroma/.gitkeep
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

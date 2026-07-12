@@ -1,0 +1,126 @@
+{
+  "user": {
+    "name": "Abraham Folorunso",
+    "role": "Procurement Officer",
+    "organisation": "Niger State Ministry of Works"
+  },
+  "stats": {
+    "evaluationsRun": 24,
+    "avgComplianceRate": 71,
+    "flaggedSubmissions": 9
+  },
+  "requirementSets": [
+    {
+      "id": "bpp-works-standard",
+      "name": "BPP Works — Standard",
+      "source": "BPP Standard Bidding Document (Works), 2011 ed.",
+      "count": 12,
+      "description": "Mandatory eligibility and technical requirements for open competitive bidding on works contracts."
+    },
+    {
+      "id": "ppa-eligibility-core",
+      "name": "PPA 2007 — Eligibility Core",
+      "source": "Public Procurement Act 2007, s.16(6)",
+      "count": 8,
+      "description": "Statutory eligibility criteria every bidder must satisfy under the Act."
+    }
+  ],
+  "requirements": [
+    { "id": "R1", "title": "Certificate of Incorporation (CAC)", "ref": "PPA 2007 s.16(6)(a)", "text": "Evidence of registration with the Corporate Affairs Commission — certificate of incorporation or registration of business name." },
+    { "id": "R2", "title": "Tax Clearance Certificate — last 3 years", "ref": "PPA 2007 s.16(6)(d)", "text": "Current tax clearance certificate for the three years immediately preceding the bid (2023, 2024, 2025), expiring 31 December of the current year." },
+    { "id": "R3", "title": "PENCOM Compliance Certificate", "ref": "Pension Reform Act 2014 / PPA 2007 s.16(6)(d)", "text": "Valid pension clearance certificate showing remittance of employee pension contributions." },
+    { "id": "R4", "title": "ITF Compliance Certificate", "ref": "ITF Act (amended 2011)", "text": "Valid Industrial Training Fund compliance certificate." },
+    { "id": "R5", "title": "NSITF Compliance Certificate", "ref": "Employees' Compensation Act 2010", "text": "Valid Nigeria Social Insurance Trust Fund clearance certificate." },
+    { "id": "R6", "title": "BPP Interim Registration Report (IRR)", "ref": "BPP circular ref. BPP/2019/01", "text": "Evidence of registration on the National Database of Federal Contractors, Consultants and Service Providers." },
+    { "id": "R7", "title": "Audited Financial Statements — last 3 years", "ref": "SBD Works, Section III cl. 3.1", "text": "Audited accounts for the last three financial years, signed by a licensed auditor, demonstrating financial capacity." },
+    { "id": "R8", "title": "Average Annual Turnover ≥ ₦250m", "ref": "SBD Works, Section III cl. 3.2", "text": "Minimum average annual construction turnover of ₦250 million within the last three years." },
+    { "id": "R9", "title": "Similar Projects — 2 in last 5 years", "ref": "SBD Works, Section III cl. 4.2(a)", "text": "Evidence of at least two contracts of similar nature and complexity, each ≥ ₦150 million, completed within the last five years, with award letters and completion certificates." },
+    { "id": "R10", "title": "Key Personnel — Project Manager (COREN)", "ref": "SBD Works, Section III cl. 4.2(c)", "text": "CV and certificates of a project manager with COREN registration and ≥ 10 years' relevant experience." },
+    { "id": "R11", "title": "Equipment Schedule with Proof of Ownership", "ref": "SBD Works, Section III cl. 4.2(d)", "text": "Schedule of essential equipment (concrete mixers, tippers, excavator, water tanker) with proof of ownership or lease agreement." },
+    { "id": "R12", "title": "Sworn Affidavit of Non-Debarment", "ref": "PPA 2007 s.16(6)(f)", "text": "Sworn affidavit disclosing that the company is not in receivership, has no director convicted of financial crime, and is not debarred from public procurement." }
+  ],
+  "evaluations": [
+    {
+      "id": "EV-2026-024",
+      "contractor": "Zenith Bond Construction Ltd",
+      "project": "Rehabilitation of Bida–Lemu Road, Section II",
+      "requirementSet": "BPP Works — Standard",
+      "date": "2026-06-28",
+      "score": 75,
+      "status": "Completed",
+      "counts": { "compliant": 9, "missing": 2, "review": 1 },
+      "files": [
+        { "name": "ZBC_Company_Profile.pdf", "type": "Company Profile", "size": "4.2 MB" },
+        { "name": "CAC_Certificate_RC482291.pdf", "type": "CAC", "size": "0.8 MB" },
+        { "name": "Tax_Clearance_2023-2025.pdf", "type": "Tax Clearance", "size": "1.1 MB" },
+        { "name": "PENCOM_Certificate_2026.pdf", "type": "PENCOM", "size": "0.6 MB" },
+        { "name": "ITF_Compliance_2026.pdf", "type": "ITF", "size": "0.5 MB" },
+        { "name": "Audited_Accounts_2023-2025.pdf", "type": "Audited Accounts", "size": "9.7 MB" },
+        { "name": "Equipment_Schedule.xlsx", "type": "Equipment Schedule", "size": "0.3 MB" },
+        { "name": "Key_Personnel_CVs.pdf", "type": "Key Personnel CV", "size": "6.4 MB" }
+      ],
+      "results": [
+        { "reqId": "R1", "status": "Compliant", "evidence": "CAC_Certificate_RC482291.pdf, p.1", "justification": "Certificate of incorporation RC 482291 issued 14 March 2008 in the name of Zenith Bond Construction Ltd matches the bidding entity exactly." },
+        { "reqId": "R2", "status": "Compliant", "evidence": "Tax_Clearance_2023-2025.pdf, p.1", "justification": "TCC covers assessment years 2023–2025 and shows expiry of 31/12/2026; taxpayer name and TIN are consistent with the CAC record." },
+        { "reqId": "R3", "status": "Compliant", "evidence": "PENCOM_Certificate_2026.pdf, p.1", "justification": "Pension clearance certificate valid to 31/12/2026; certificate number verified format PEN/CC/2026 series." },
+        { "reqId": "R4", "status": "Compliant", "evidence": "ITF_Compliance_2026.pdf, p.1", "justification": "ITF certificate current for 2026 and issued to the bidding entity." },
+        { "reqId": "R5", "status": "Missing", "evidence": "—", "justification": "No NSITF clearance certificate was found in any submitted document. This is a mandatory requirement under the Employees' Compensation Act 2010." },
+        { "reqId": "R6", "status": "Compliant", "evidence": "ZBC_Company_Profile.pdf, p.3", "justification": "IRR number on the company profile matches the BPP contractor-database format and is dated within validity." },
+        { "reqId": "R7", "status": "Compliant", "evidence": "Audited_Accounts_2023-2025.pdf", "justification": "Audited statements for FY2023–FY2025 signed by Adekunle & Co (FRC/2013/ICAN/00000001234)." },
+        { "reqId": "R8", "status": "Needs Review", "evidence": "Audited_Accounts_2023-2025.pdf, p.12, 41, 77", "justification": "Computed average annual construction turnover is ₦243m — within 3% of the ₦250m threshold. Restated 2024 figures make the calculation ambiguous; recommend committee verification." },
+        { "reqId": "R9", "status": "Compliant", "evidence": "ZBC_Company_Profile.pdf, pp.9–14", "justification": "Two road contracts (₦310m FERMA 2022; ₦185m NSMW 2024) with award letters and completion certificates attached." },
+        { "reqId": "R10", "status": "Compliant", "evidence": "Key_Personnel_CVs.pdf, pp.2–6", "justification": "Proposed PM holds COREN reg. R.12,345 with 14 years' road-construction experience; certificates attached." },
+        { "reqId": "R11", "status": "Compliant", "evidence": "Equipment_Schedule.xlsx", "justification": "Schedule lists all required plant; ownership receipts for mixer and tippers, lease agreement for excavator included." },
+        { "reqId": "R12", "status": "Missing", "evidence": "—", "justification": "No sworn affidavit of non-debarment was found. PPA 2007 s.16(6)(f) makes this mandatory; its absence is grounds for rejection." }
+      ]
+    },
+    {
+      "id": "EV-2026-023",
+      "contractor": "Hallmark Builders Nigeria Ltd",
+      "project": "Construction of 24-classroom block, GSS Minna",
+      "requirementSet": "BPP Works — Standard",
+      "date": "2026-06-21",
+      "score": 92,
+      "status": "Completed",
+      "counts": { "compliant": 11, "missing": 0, "review": 1 },
+      "files": [
+        { "name": "Hallmark_Tender_Bundle.pdf", "type": "Company Profile", "size": "18.9 MB" }
+      ],
+      "results": []
+    },
+    {
+      "id": "EV-2026-022",
+      "contractor": "Kaduna Rock Engineering Ltd",
+      "project": "Erosion control works, Chanchaga",
+      "requirementSet": "PPA 2007 — Eligibility Core",
+      "date": "2026-06-14",
+      "score": 58,
+      "status": "Completed",
+      "counts": { "compliant": 5, "missing": 3, "review": 0 },
+      "files": [],
+      "results": []
+    },
+    {
+      "id": "EV-2026-021",
+      "contractor": "Delta Apex Projects Ltd",
+      "project": "Township drainage, Tunga Phase 1",
+      "requirementSet": "BPP Works — Standard",
+      "date": "2026-06-02",
+      "score": 83,
+      "status": "Completed",
+      "counts": { "compliant": 10, "missing": 1, "review": 1 },
+      "files": [],
+      "results": []
+    }
+  ],
+  "uploadFiles": [
+    { "name": "ZBC_Company_Profile.pdf", "type": "Company Profile", "size": "4.2 MB" },
+    { "name": "CAC_Certificate_RC482291.pdf", "type": "CAC", "size": "0.8 MB" },
+    { "name": "Tax_Clearance_2023-2025.pdf", "type": "Tax Clearance", "size": "1.1 MB" },
+    { "name": "PENCOM_Certificate_2026.pdf", "type": "PENCOM", "size": "0.6 MB" },
+    { "name": "ITF_Compliance_2026.pdf", "type": "ITF", "size": "0.5 MB" },
+    { "name": "Audited_Accounts_2023-2025.pdf", "type": "Audited Accounts", "size": "9.7 MB" },
+    { "name": "Equipment_Schedule.xlsx", "type": "Equipment Schedule", "size": "0.3 MB" },
+    { "name": "Key_Personnel_CVs.pdf", "type": "Key Personnel CV", "size": "6.4 MB" }
+  ]
+}

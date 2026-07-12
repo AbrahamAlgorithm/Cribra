@@ -1,0 +1,13 @@
+<svg width="40" height="32" viewBox="0 0 40 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- sieve mark: a grid of dots narrowing downward, like material passing a sieve -->
+  <circle cx="6" cy="5" r="3" fill="#1a1714"/>
+  <circle cx="16" cy="5" r="3" fill="#1a1714"/>
+  <circle cx="26" cy="5" r="3" fill="#1a1714"/>
+  <circle cx="36" cy="5" r="3" fill="#1a1714"/>
+  <circle cx="11" cy="14" r="2.6" fill="#1a1714"/>
+  <circle cx="21" cy="14" r="2.6" fill="#1a1714"/>
+  <circle cx="31" cy="14" r="2.6" fill="#1a1714"/>
+  <circle cx="16" cy="22" r="2.2" fill="#0E5A34"/>
+  <circle cx="26" cy="22" r="2.2" fill="#0E5A34"/>
+  <circle cx="21" cy="29" r="1.8" fill="#0E5A34"/>
+</svg>
