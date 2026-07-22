@@ -4,6 +4,8 @@
 # Internal build docs — not committed
 PROMPTS.md
 SPEC.md
+newspec.md
+Milestone Update/
 
 # Python
 __pycache__/
@@ -15,6 +17,10 @@ __pycache__/
 # Vector store data
 data/chroma/*
 !data/chroma/.gitkeep
+
+# Uploaded contractor submission documents
+data/uploads/*
+!data/uploads/.gitkeep
 
 # OS / editor
 .DS_Store
