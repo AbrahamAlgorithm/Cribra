@@ -14,6 +14,9 @@ class Settings(BaseModel):
     openai_api_key: str = ""
     chroma_persist_dir: str = str(BASE_DIR / "data" / "chroma")
     log_level: str = "INFO"
+    # Not part of the frozen .env.example contract (SPEC.md Section 8, Milestone 0) —
+    # optional override, defaults to a path under the repo so no .env change is required.
+    upload_dir: str = str(BASE_DIR / "data" / "uploads")
 
 
 @lru_cache
@@ -23,4 +26,5 @@ def get_settings() -> Settings:
         openai_api_key=os.getenv("OPENAI_API_KEY", ""),
         chroma_persist_dir=os.getenv("CHROMA_PERSIST_DIR", str(BASE_DIR / "data" / "chroma")),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
+        upload_dir=os.getenv("UPLOAD_DIR", str(BASE_DIR / "data" / "uploads")),
     )
