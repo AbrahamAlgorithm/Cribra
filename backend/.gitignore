@@ -5,6 +5,7 @@
 PROMPTS.md
 SPEC.md
 newspec.md
+phases.md
 Milestone Update/
 
 # Python
@@ -21,6 +22,15 @@ data/chroma/*
 # Uploaded contractor submission documents
 data/uploads/*
 !data/uploads/.gitkeep
+
+# GPT-4o vision page-transcription cache (dev-run cost/latency optimization)
+data/vision_cache/*
+!data/vision_cache/.gitkeep
+
+# Real field-collected documents (contractor submissions, BPP SBD) — contain
+# real company/personal data, never commit these
+tests/fixtures/real/*
+!tests/fixtures/real/.gitkeep
 
 # OS / editor
 .DS_Store
