@@ -1,65 +1,61 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { UploadCloud, ArrowRight, ArrowLeft, Play } from "lucide-react";
-import data from "../data/mockData.json";
+import { UploadCloud, ArrowRight, ArrowLeft, Play, Loader2 } from "lucide-react";
+import { createDefaultEvaluation, submitDocuments, runEvaluate } from "../lib/api.js";
 import { Stepper, FileListItem } from "../components/app.jsx";
 import { CornerFrame, PrimaryButton, FrameButton, Reveal } from "../components/ui.jsx";
 
-function StepOne({ selected, setSelected, onNext }) {
-  const previewReqs = data.requirements.slice(0, 6);
+function formatSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function StepOne({ evaluation, loading, error, onNext }) {
+  const requirements = evaluation?.requirements ?? [];
   return (
     <>
-      <div className="mt-10 grid grid-cols-1 gap-4 md:grid-cols-2">
-        {data.requirementSets.map((set) => (
-          <button key={set.id} type="button" onClick={() => setSelected(set.id)} className="text-left">
-            <CornerFrame
-              className={`flex h-full flex-col gap-3 p-6 transition-colors ${
-                selected === set.id ? "bg-fg text-cream" : "bg-cream/60 hover:bg-cream"
-              }`}
-            >
-              <span className={`text-eyebrow ${selected === set.id ? "text-cream/60" : "text-fg/50"}`}>
-                Preloaded set · {set.count} requirements
-              </span>
-              <span className="text-pullquote" style={{ fontSize: 22 }}>
-                {set.name}
-              </span>
-              <span className={`text-caption ${selected === set.id ? "text-cream/65" : "text-fg/55"}`}>
-                {set.description}
-              </span>
-              <span className={`text-eyebrow mt-auto ${selected === set.id ? "text-cream/50" : "text-fg/40"}`}>
-                {set.source}
-              </span>
-            </CornerFrame>
-          </button>
-        ))}
-      </div>
-
-      <CornerFrame className="mt-4 flex items-center justify-between gap-4 p-5">
-        <div className="flex items-center gap-3">
-          <UploadCloud size={18} className="text-fg/45" />
-          <span className="text-caption text-fg/60">
-            Or upload a tender document and let Cribra extract the requirements.
-          </span>
-        </div>
-        <span className="text-eyebrow border border-fg/15 bg-fg/5 px-2 py-1 text-fg/45">Prototype</span>
+      <CornerFrame className="mt-10 flex flex-col gap-3 bg-fg p-6 text-cream">
+        <span className="text-eyebrow text-cream/60">
+          {loading ? "Loading…" : `Default checklist · ${requirements.length} requirements`}
+        </span>
+        <span className="text-pullquote" style={{ fontSize: 22 }}>
+          BPP / PPA 2007 Standard Checklist
+        </span>
+        <span className="text-caption text-cream/65">
+          The 10-requirement default technical-compliance checklist (CAC, Tax Clearance, PENCOM,
+          ITF, NSITF, Audited Accounts, Professional Registration, Key Personnel CVs, Similar
+          Project Experience, Equipment Schedule).
+        </span>
       </CornerFrame>
 
-      <div className="mt-10">
-        <h2 className="text-eyebrow text-fg/55">Requirements that will be checked</h2>
-        <ul className="mt-3 border border-dashed border-[var(--color-border)] bg-cream/60">
-          {previewReqs.map((r) => (
-            <li key={r.id} className="flex items-baseline gap-4 border-b border-dashed border-fg/12 px-5 py-3 last:border-0">
-              <span className="text-eyebrow shrink-0 text-fg/40">{r.id}</span>
-              <span className="text-caption text-fg">{r.title}</span>
-              <span className="text-eyebrow ml-auto shrink-0 text-fg/40">{r.ref}</span>
-            </li>
-          ))}
-          <li className="text-caption px-5 py-3 text-fg/45">+ {data.requirements.length - previewReqs.length} more…</li>
-        </ul>
-      </div>
+      {error && (
+        <p className="text-caption mt-4 text-[#96291c]">
+          Couldn't reach the backend ({error}). Is it running at{" "}
+          <code>uvicorn app.main:app --reload</code>?
+        </p>
+      )}
+
+      {requirements.length > 0 && (
+        <div className="mt-10">
+          <h2 className="text-eyebrow text-fg/55">Requirements that will be checked</h2>
+          <ul className="mt-3 border border-dashed border-[var(--color-border)] bg-cream/60">
+            {requirements.map((r, i) => (
+              <li
+                key={r.id}
+                className="flex items-baseline gap-4 border-b border-dashed border-fg/12 px-5 py-3 last:border-0"
+              >
+                <span className="text-eyebrow shrink-0 text-fg/40">{String(i + 1).padStart(2, "0")}</span>
+                <span className="text-caption text-fg">{r.name}</span>
+                {r.is_mandatory && <span className="text-eyebrow ml-auto shrink-0 text-fg/40">Mandatory</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="mt-10 flex justify-end">
-        <PrimaryButton onClick={onNext}>
+        <PrimaryButton onClick={onNext} className={!evaluation ? "pointer-events-none opacity-40" : ""}>
           <span className="inline-flex items-center gap-2">
             Next: Contractor Submission <ArrowRight size={15} />
           </span>
@@ -69,39 +65,38 @@ function StepOne({ selected, setSelected, onNext }) {
   );
 }
 
-function StepTwo({ files, setFiles, onBack, onRun }) {
-  const [staged, setStaged] = useState(files.length > 0);
+function StepTwo({ files, setFiles, onBack, onRun, running, error }) {
+  const addFiles = (fileList) => {
+    setFiles((prev) => [...prev, ...Array.from(fileList)]);
+  };
+
   return (
     <>
       <CornerFrame className="mt-10 p-2">
-        <button
-          type="button"
-          onClick={() => {
-            setStaged(true);
-            setFiles(data.uploadFiles);
-          }}
-          className="flex w-full flex-col items-center justify-center gap-3 border border-dashed border-fg/20 bg-cream/50 px-6 py-14 transition-colors hover:bg-cream"
-        >
+        <label className="flex w-full cursor-pointer flex-col items-center justify-center gap-3 border border-dashed border-fg/20 bg-cream/50 px-6 py-14 transition-colors hover:bg-cream">
           <UploadCloud size={28} className="text-fg/40" />
           <span className="text-body text-fg/70" style={{ fontSize: 18 }}>
-            Drag &amp; drop the contractor's documents
+            Click to choose the contractor's documents
           </span>
-          <span className="text-caption text-fg/45">
-            or click to browse — PDF, DOCX, XLSX (prototype: loads a sample submission)
-          </span>
-        </button>
+          <span className="text-caption text-fg/45">PDF, DOCX, JPG, PNG</span>
+          <input
+            type="file"
+            multiple
+            accept=".pdf,.docx,.jpg,.jpeg,.png"
+            className="hidden"
+            onChange={(e) => e.target.files && addFiles(e.target.files)}
+          />
+        </label>
       </CornerFrame>
 
-      {staged && files.length > 0 && (
+      {files.length > 0 && (
         <div className="mt-8">
-          <h2 className="text-eyebrow text-fg/55">
-            Submission — Zenith Bond Construction Ltd · {files.length} files
-          </h2>
+          <h2 className="text-eyebrow text-fg/55">Submission · {files.length} file(s)</h2>
           <ul className="mt-3 border border-dashed border-[var(--color-border)] bg-cream/60">
             {files.map((f, i) => (
               <FileListItem
-                key={f.name}
-                file={f}
+                key={`${f.name}-${i}`}
+                file={{ name: f.name, type: f.name.split(".").pop().toUpperCase(), size: formatSize(f.size) }}
                 onRemove={() => setFiles(files.filter((_, j) => j !== i))}
               />
             ))}
@@ -109,15 +104,21 @@ function StepTwo({ files, setFiles, onBack, onRun }) {
         </div>
       )}
 
+      {error && <p className="text-caption mt-4 text-[#96291c]">{error}</p>}
+
       <div className="mt-10 flex items-center justify-between">
         <FrameButton onClick={onBack}>
           <span className="inline-flex items-center gap-2">
             <ArrowLeft size={15} /> Back
           </span>
         </FrameButton>
-        <PrimaryButton onClick={onRun} className={files.length === 0 ? "pointer-events-none opacity-40" : ""}>
+        <PrimaryButton
+          onClick={onRun}
+          className={files.length === 0 || running ? "pointer-events-none opacity-40" : ""}
+        >
           <span className="inline-flex items-center gap-2">
-            <Play size={14} /> Run Evaluation
+            {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+            {running ? "Starting…" : "Run Evaluation"}
           </span>
         </PrimaryButton>
       </div>
@@ -128,8 +129,42 @@ function StepTwo({ files, setFiles, onBack, onRun }) {
 export default function NewEvaluation() {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
-  const [selected, setSelected] = useState(data.requirementSets[0].id);
+  const [evaluation, setEvaluation] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [files, setFiles] = useState([]);
+  const [running, setRunning] = useState(false);
+  const [runError, setRunError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    createDefaultEvaluation()
+      .then((ev) => {
+        if (!cancelled) setEvaluation(ev);
+      })
+      .catch((err) => {
+        if (!cancelled) setLoadError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleRun = async () => {
+    setRunning(true);
+    setRunError(null);
+    try {
+      await submitDocuments(evaluation.id, files);
+      await runEvaluate(evaluation.id);
+      navigate(`/app/evaluations/processing?id=${evaluation.id}`);
+    } catch (err) {
+      setRunError(err.message);
+      setRunning(false);
+    }
+  };
 
   return (
     <div className="mx-auto w-full max-w-[1600px] px-5 py-10 md:px-7">
@@ -143,13 +178,15 @@ export default function NewEvaluation() {
         </div>
       </Reveal>
       {step === 1 ? (
-        <StepOne selected={selected} setSelected={setSelected} onNext={() => setStep(2)} />
+        <StepOne evaluation={evaluation} loading={loading} error={loadError} onNext={() => setStep(2)} />
       ) : (
         <StepTwo
           files={files}
           setFiles={setFiles}
           onBack={() => setStep(1)}
-          onRun={() => navigate("/app/evaluations/processing")}
+          onRun={handleRun}
+          running={running}
+          error={runError}
         />
       )}
     </div>

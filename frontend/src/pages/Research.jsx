@@ -12,9 +12,9 @@ const OBJECTIVES = [
 ];
 
 const RESULTS = [
-  { metric: "F1-score", value: "—", note: "Classification accuracy against expert-labelled requirements. Placeholder until evaluation concludes." },
-  { metric: "Cosine similarity", value: "—", note: "Semantic agreement between generated and expert justifications. Placeholder until evaluation concludes." },
-  { metric: "Questionnaire (n = —)", value: "—", note: "Perceived usefulness and trust among procurement professionals. Placeholder until survey concludes." },
+  { metric: "F1-score", value: "—", note: "Classification accuracy against expert-labelled requirements." },
+  { metric: "Cosine similarity", value: "—", note: "Semantic agreement between generated and expert justifications." },
+  { metric: "Questionnaire (n = —)", value: "—", note: "Perceived usefulness and trust among procurement professionals." },
 ];
 
 function Section({ number, label, children }) {
@@ -48,7 +48,7 @@ export default function Research() {
             </div>
             <div>
               <div className="text-eyebrow text-fg/50">Supervisor</div>
-              <div className="text-credit mt-1 text-fg">Department of Building</div>
+              <div className="text-credit mt-1 text-fg">Prof. R.A. Jimoh</div>
             </div>
             <div>
               <div className="text-eyebrow text-fg/50">Institution</div>

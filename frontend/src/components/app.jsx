@@ -4,18 +4,17 @@ export function StatusBadge({ status }) {
   const styles = {
     Compliant: "bg-[#e2efe6] text-[#166237] border-[#166237]/25",
     Missing: "bg-[#f6e3e0] text-[#96291c] border-[#96291c]/25",
+    "Non-Compliant": "bg-[#f6e3e0] text-[#96291c] border-[#96291c]/25",
     "Needs Review": "bg-[#f5ecd8] text-[#8a5a13] border-[#8a5a13]/25",
   };
+  const isRed = status === "Missing" || status === "Non-Compliant";
   return (
     <span
       className={`text-eyebrow inline-flex items-center gap-2 whitespace-nowrap border px-2 py-1 ${styles[status] || ""}`}
     >
       <span
         className="h-[6px] w-[6px] rounded-full"
-        style={{
-          background:
-            status === "Compliant" ? "#1b7a43" : status === "Missing" ? "#c03a2b" : "#b7791f",
-        }}
+        style={{ background: status === "Compliant" ? "#1b7a43" : isRed ? "#c03a2b" : "#b7791f" }}
       />
       {status}
     </span>

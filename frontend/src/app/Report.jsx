@@ -1,28 +1,25 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ChevronDown, Download, ArrowLeft } from "lucide-react";
-import data from "../data/mockData.json";
+import { ChevronDown, Download, ArrowLeft, Loader2 } from "lucide-react";
+import { getReport } from "../lib/api.js";
 import { StatusBadge, ScoreRing } from "../components/app.jsx";
 import { CornerFrame, Reveal } from "../components/ui.jsx";
 
-const reqById = Object.fromEntries(data.requirements.map((r) => [r.id, r]));
-
 function Row({ result }) {
   const [open, setOpen] = useState(false);
-  const req = reqById[result.reqId];
+  const source = result.requirement_source;
   return (
     <>
       <tr
         onClick={() => setOpen(!open)}
         className="cursor-pointer border-b border-dashed border-fg/12 transition-colors hover:bg-cream"
       >
-        <td className="text-eyebrow px-4 py-4 text-fg/40">{result.reqId}</td>
-        <td className="text-caption px-4 py-4 font-medium text-fg">{req.title}</td>
+        <td className="text-caption px-4 py-4 font-medium text-fg">{result.requirement_name}</td>
         <td className="px-4 py-4">
           <StatusBadge status={result.status} />
         </td>
         <td className="text-caption px-4 py-4 text-fg/60 max-lg:hidden" style={{ fontSize: 13 }}>
-          {result.evidence}
+          {result.evidence_found}
         </td>
         <td className="px-4 py-4 text-right">
           <ChevronDown
@@ -35,15 +32,23 @@ function Row({ result }) {
       {open && (
         <tr className="border-b border-dashed border-fg/12 bg-cream/70">
           <td />
-          <td colSpan={4} className="px-4 py-5">
+          <td colSpan={3} className="px-4 py-5">
             <div className="grid max-w-[860px] grid-cols-1 gap-5 md:grid-cols-2">
               <div>
                 <div className="text-eyebrow text-fg/50">Justification</div>
                 <p className="text-caption mt-2 text-fg/80">{result.justification}</p>
+                {result.confidence_note && (
+                  <p className="text-caption mt-2 text-fg/50" style={{ fontSize: 12.5 }}>
+                    {result.confidence_note}
+                  </p>
+                )}
               </div>
               <div>
-                <div className="text-eyebrow text-fg/50">Requirement checked · {req.ref}</div>
-                <p className="text-caption mt-2 text-fg/70">{req.text}</p>
+                <div className="text-eyebrow text-fg/50">Source</div>
+                <p className="text-caption mt-2 text-fg/70">
+                  {source?.document_name || "—"}
+                  {source?.section_reference ? ` · ${source.section_reference}` : ""}
+                </p>
               </div>
             </div>
           </td>
@@ -55,54 +60,103 @@ function Row({ result }) {
 
 export default function Report() {
   const { id } = useParams();
-  const evaluation = data.evaluations.find((e) => e.id === id) || data.evaluations[0];
-  const results = evaluation.results.length ? evaluation.results : data.evaluations[0].results;
+  const [report, setReport] = useState(null);
+  const [error, setError] = useState(null);
   const [issuesOnly, setIssuesOnly] = useState(false);
 
-  const rows = useMemo(
-    () => (issuesOnly ? results.filter((r) => r.status !== "Compliant") : results),
-    [issuesOnly, results]
-  );
+  useEffect(() => {
+    let cancelled = false;
+    getReport(id)
+      .then((r) => {
+        if (!cancelled) setReport(r);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  const rows = useMemo(() => {
+    if (!report) return [];
+    return issuesOnly ? report.results.filter((r) => r.status !== "Compliant") : report.results;
+  }, [issuesOnly, report]);
+
+  if (error) {
+    return (
+      <div className="mx-auto w-full max-w-[1600px] px-5 py-10 md:px-7">
+        <p className="text-caption text-[#96291c]">Couldn't load this report: {error}</p>
+      </div>
+    );
+  }
+
+  if (!report) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Loader2 size={20} className="animate-spin text-fg/40" />
+      </div>
+    );
+  }
+
+  const { summary } = report;
 
   return (
     <div className="mx-auto w-full max-w-[1600px] px-5 py-10 md:px-7">
       <Reveal>
         <Link
-          to="/app/evaluations"
+          to="/app"
           className="text-button inline-flex items-center gap-2 text-fg/55 transition-colors hover:text-fg"
         >
-          <ArrowLeft size={14} /> Evaluations
+          <ArrowLeft size={14} /> Dashboard
         </Link>
 
-        {/* Report header */}
         <CornerFrame className="mt-6 bg-cream/70 p-8">
           <div className="flex flex-wrap items-center justify-between gap-8">
             <div className="min-w-0">
               <p className="text-eyebrow text-fg/50">
-                Compliance report · {evaluation.id} · {evaluation.date}
+                Compliance report · {report.evaluation_id} · {new Date(report.generated_at).toLocaleString()}
               </p>
               <h1 className="text-subhead mt-3 text-fg" style={{ fontSize: "clamp(26px,2.8vw,40px)" }}>
-                {evaluation.contractor}
+                Technical Compliance Evaluation
               </h1>
               <p className="text-caption mt-2 text-fg/60">
-                {evaluation.project} · Checked against {evaluation.requirementSet}
+                {summary.requirements_evaluated} requirements checked against the default BPP/PPA checklist
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
                 <StatusBadge status="Compliant" />
-                <span className="text-caption -ml-1 mr-3 self-center text-fg/60">{evaluation.counts.compliant}</span>
-                <StatusBadge status="Missing" />
-                <span className="text-caption -ml-1 mr-3 self-center text-fg/60">{evaluation.counts.missing}</span>
+                <span className="text-caption -ml-1 mr-3 self-center text-fg/60">{summary.compliant}</span>
+                <StatusBadge status="Non-Compliant" />
+                <span className="text-caption -ml-1 mr-3 self-center text-fg/60">{summary.non_compliant}</span>
                 <StatusBadge status="Needs Review" />
-                <span className="text-caption -ml-1 self-center text-fg/60">{evaluation.counts.review}</span>
+                <span className="text-caption -ml-1 self-center text-fg/60">{summary.needs_review}</span>
               </div>
             </div>
-            <ScoreRing score={evaluation.score} />
+            <ScoreRing score={Math.round(summary.compliance_score)} />
           </div>
         </CornerFrame>
       </Reveal>
 
+      <Reveal delay={60}>
+        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+          <CornerFrame className="p-6">
+            <div className="text-eyebrow text-fg/50">Overall assessment</div>
+            <p className="text-caption mt-3 text-fg/80">{report.overall_assessment}</p>
+          </CornerFrame>
+          <CornerFrame className="p-6">
+            <div className="text-eyebrow text-fg/50">Observations</div>
+            <ul className="mt-3 flex flex-col gap-2">
+              {report.observations.map((o, i) => (
+                <li key={i} className="text-caption text-fg/80">
+                  · {o}
+                </li>
+              ))}
+            </ul>
+          </CornerFrame>
+        </div>
+      </Reveal>
+
       <Reveal delay={100}>
-        {/* Controls */}
         <div className="mt-8 flex flex-wrap items-center justify-between gap-4">
           <label className="flex cursor-pointer items-center gap-3">
             <button
@@ -130,12 +184,10 @@ export default function Report() {
           </button>
         </div>
 
-        {/* Results table */}
         <div className="mt-4 overflow-x-auto border border-dashed border-[var(--color-border)] bg-cream/50">
           <table className="w-full min-w-[720px] border-collapse text-left">
             <thead>
               <tr className="border-b border-fg/15">
-                <th className="text-eyebrow px-4 py-3 font-medium text-fg/45">#</th>
                 <th className="text-eyebrow px-4 py-3 font-medium text-fg/45">Requirement</th>
                 <th className="text-eyebrow px-4 py-3 font-medium text-fg/45">Status</th>
                 <th className="text-eyebrow px-4 py-3 font-medium text-fg/45 max-lg:hidden">
@@ -146,7 +198,7 @@ export default function Report() {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <Row key={r.reqId} result={r} />
+                <Row key={r.requirement_id} result={r} />
               ))}
             </tbody>
           </table>

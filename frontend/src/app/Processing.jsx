@@ -1,28 +1,95 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Check } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import { Check, AlertTriangle } from "lucide-react";
+import { getStatus } from "../lib/api.js";
 
+// Mirrors the real Evaluation.status lifecycle (app/models/domain.py).
+// "retrieving" is a defined status value but never actually set by the
+// backend (Milestone 5 finding — retrieval happens inside each per-
+// requirement 4B call, not as one distinct global step), so it's omitted
+// here rather than shown as a step that never lights up.
 const STEPS = [
-  { label: "Ingesting documents", detail: "Parsing 8 files · detecting document types" },
-  { label: "Retrieving provisions", detail: "PPA 2007 · BPP Standard Bidding Documents" },
-  { label: "Evaluating requirements", detail: "12 requirements · grounded verdicts" },
-  { label: "Generating report", detail: "Justifications · overall compliance score" },
+  { key: "ingesting", label: "Ingesting documents", detail: "Extracting text, classifying document types" },
+  { key: "evaluating", label: "Evaluating requirements", detail: "Certificate rules + RAG-grounded reasoning" },
+  { key: "generating_report", label: "Generating report", detail: "Justifications, citations, compliance score" },
 ];
 
-const STEP_MS = 1600;
+const POLL_MS = 3000;
+
+function stepIndexFor(status) {
+  if (status === "pending" || status === "ingesting") return 0;
+  if (status === "retrieving" || status === "evaluating") return 1;
+  if (status === "generating_report") return 2;
+  if (status === "complete") return STEPS.length;
+  return 0;
+}
 
 export default function Processing() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const evaluationId = searchParams.get("id");
   const [current, setCurrent] = useState(0);
+  const [failed, setFailed] = useState(false);
+  const [pollError, setPollError] = useState(null);
+  const timeoutRef = useRef(null);
 
   useEffect(() => {
-    if (current >= STEPS.length) {
-      const t = setTimeout(() => navigate("/app/evaluations/EV-2026-024", { replace: true }), 500);
-      return () => clearTimeout(t);
-    }
-    const t = setTimeout(() => setCurrent((c) => c + 1), STEP_MS);
-    return () => clearTimeout(t);
-  }, [current, navigate]);
+    if (!evaluationId) return undefined;
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const { status } = await getStatus(evaluationId);
+        if (cancelled) return;
+        if (status === "failed") {
+          setFailed(true);
+          return;
+        }
+        if (status === "complete") {
+          setCurrent(STEPS.length);
+          navigate(`/app/evaluations/${evaluationId}`, { replace: true });
+          return;
+        }
+        setCurrent(stepIndexFor(status));
+        timeoutRef.current = setTimeout(poll, POLL_MS);
+      } catch (err) {
+        if (!cancelled) setPollError(err.message);
+      }
+    };
+
+    poll();
+    return () => {
+      cancelled = true;
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, [evaluationId, navigate]);
+
+  if (!evaluationId) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-5 text-center">
+        <p className="text-caption text-fg/60">
+          No evaluation in progress. <Link to="/app/evaluations/new" className="underline">Start a new one</Link>.
+        </p>
+      </div>
+    );
+  }
+
+  if (failed) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-5 text-center">
+        <div>
+          <AlertTriangle size={28} className="mx-auto text-[#96291c]" />
+          <p className="text-subhead mt-4 text-fg">Evaluation failed</p>
+          <p className="text-caption mt-2 text-fg/60">
+            Something went wrong while processing this submission. Check the backend logs.
+          </p>
+          <Link to="/app/evaluations/new" className="text-button mt-6 inline-block underline">
+            Start a new evaluation
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center px-5 md:px-7">
@@ -31,6 +98,9 @@ export default function Processing() {
         <h1 className="text-subhead mt-3 text-center text-fg" style={{ fontSize: "clamp(26px,2.6vw,38px)" }}>
           Sifting the submission…
         </h1>
+        {pollError && (
+          <p className="text-caption mt-3 text-center text-[#96291c]">Lost connection: {pollError}</p>
+        )}
         <ol className="mt-12 flex flex-col gap-2">
           {STEPS.map((s, i) => {
             const state = i < current ? "done" : i === current ? "active" : "todo";
@@ -75,6 +145,9 @@ export default function Processing() {
             }}
           />
         </div>
+        <p className="text-caption mt-6 text-center text-fg/40" style={{ fontSize: 12 }}>
+          Real evaluations can take 40–90 seconds or more depending on submission size.
+        </p>
       </div>
     </div>
   );
