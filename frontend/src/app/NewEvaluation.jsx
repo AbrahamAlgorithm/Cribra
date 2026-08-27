@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { UploadCloud, ArrowRight, ArrowLeft, Play, Loader2 } from "lucide-react";
-import { createDefaultEvaluation, submitDocuments, runEvaluate } from "../lib/api.js";
+import {
+  getDefaultRequirements,
+  createManualEvaluation,
+  setEvaluationDate,
+  submitDocuments,
+  runEvaluate,
+} from "../lib/api.js";
 import { Stepper, FileListItem } from "../components/app.jsx";
 import { CornerFrame, PrimaryButton, FrameButton, Reveal } from "../components/ui.jsx";
 
@@ -11,22 +17,49 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function StepOne({ evaluation, loading, error, onNext }) {
-  const requirements = evaluation?.requirements ?? [];
+function StepOne({
+  requirements,
+  checkedIds,
+  onToggle,
+  loading,
+  error,
+  creating,
+  createError,
+  evaluationDate,
+  onEvaluationDateChange,
+  onNext,
+}) {
+  const checkedCount = checkedIds.size;
   return (
     <>
       <CornerFrame className="mt-10 flex flex-col gap-3 bg-fg p-6 text-cream">
         <span className="text-eyebrow text-cream/60">
-          {loading ? "Loading…" : `Default checklist · ${requirements.length} requirements`}
+          {loading ? "Loading…" : `Default checklist · ${checkedCount} of ${requirements.length} selected`}
         </span>
         <span className="text-pullquote" style={{ fontSize: 22 }}>
           BPP / PPA 2007 Standard Checklist
         </span>
         <span className="text-caption text-cream/65">
-          The 10-requirement default technical-compliance checklist (CAC, Tax Clearance, PENCOM,
-          ITF, NSITF, Audited Accounts, Professional Registration, Key Personnel CVs, Similar
-          Project Experience, Equipment Schedule).
+          The standard checklist drawn from the BPP/PPA 2007 framework.
         </span>
+      </CornerFrame>
+
+      <CornerFrame className="mt-4 flex flex-wrap items-center justify-between gap-4 p-5">
+        <div>
+          <label htmlFor="evaluation-date" className="text-eyebrow text-fg/55">
+            Evaluation date
+          </label>
+          <p className="text-caption mt-1 text-fg/50" style={{ fontSize: 12.5 }}>
+            Certificate expiry is checked against this date, not necessarily today.
+          </p>
+        </div>
+        <input
+          id="evaluation-date"
+          type="date"
+          value={evaluationDate}
+          onChange={(e) => onEvaluationDateChange(e.target.value)}
+          className="text-caption border border-dashed border-fg/25 bg-cream/60 px-3 py-2 text-fg focus:border-fg/50 focus:outline-none"
+        />
       </CornerFrame>
 
       {error && (
@@ -38,7 +71,7 @@ function StepOne({ evaluation, loading, error, onNext }) {
 
       {requirements.length > 0 && (
         <div className="mt-10">
-          <h2 className="text-eyebrow text-fg/55">Requirements that will be checked</h2>
+          <h2 className="text-eyebrow text-fg/55">Select the requirements to check</h2>
           <ul className="mt-3 border border-dashed border-[var(--color-border)] bg-cream/60">
             {requirements.map((r, i) => (
               <li
@@ -46,18 +79,34 @@ function StepOne({ evaluation, loading, error, onNext }) {
                 className="flex items-baseline gap-4 border-b border-dashed border-fg/12 px-5 py-3 last:border-0"
               >
                 <span className="text-eyebrow shrink-0 text-fg/40">{String(i + 1).padStart(2, "0")}</span>
-                <span className="text-caption text-fg">{r.name}</span>
-                {r.is_mandatory && <span className="text-eyebrow ml-auto shrink-0 text-fg/40">Mandatory</span>}
+                <label className="flex flex-1 cursor-pointer items-baseline gap-4">
+                  <span className={`text-caption ${checkedIds.has(r.id) ? "text-fg" : "text-fg/40 line-through"}`}>
+                    {r.name}
+                  </span>
+                  <input
+                    type="checkbox"
+                    className="ml-auto h-4 w-4 shrink-0 cursor-pointer accent-fg"
+                    checked={checkedIds.has(r.id)}
+                    onChange={() => onToggle(r.id)}
+                  />
+                </label>
               </li>
             ))}
           </ul>
         </div>
       )}
 
+      {createError && <p className="text-caption mt-4 text-[#96291c]">{createError}</p>}
+
       <div className="mt-10 flex justify-end">
-        <PrimaryButton onClick={onNext} className={!evaluation ? "pointer-events-none opacity-40" : ""}>
+        <PrimaryButton
+          onClick={onNext}
+          className={requirements.length === 0 || checkedCount === 0 || creating ? "pointer-events-none opacity-40" : ""}
+        >
           <span className="inline-flex items-center gap-2">
-            Next: Contractor Submission <ArrowRight size={15} />
+            {creating ? <Loader2 size={14} className="animate-spin" /> : null}
+            {creating ? "Starting…" : "Next: Contractor Submission"}
+            {!creating && <ArrowRight size={15} />}
           </span>
         </PrimaryButton>
       </div>
@@ -129,18 +178,25 @@ function StepTwo({ files, setFiles, onBack, onRun, running, error }) {
 export default function NewEvaluation() {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
-  const [evaluation, setEvaluation] = useState(null);
+  const [requirements, setRequirements] = useState([]);
+  const [checkedIds, setCheckedIds] = useState(new Set());
   const [loadError, setLoadError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [evaluation, setEvaluation] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState(null);
   const [files, setFiles] = useState([]);
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState(null);
+  const [evaluationDate, setEvaluationDateInput] = useState(() => new Date().toISOString().slice(0, 10));
 
   useEffect(() => {
     let cancelled = false;
-    createDefaultEvaluation()
-      .then((ev) => {
-        if (!cancelled) setEvaluation(ev);
+    getDefaultRequirements()
+      .then((reqs) => {
+        if (cancelled) return;
+        setRequirements(reqs);
+        setCheckedIds(new Set(reqs.map((r) => r.id)));
       })
       .catch((err) => {
         if (!cancelled) setLoadError(err.message);
@@ -152,6 +208,36 @@ export default function NewEvaluation() {
       cancelled = true;
     };
   }, []);
+
+  const toggleRequirement = (id) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleNext = async () => {
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const selected = requirements
+        .filter((r) => checkedIds.has(r.id))
+        .map((r) => ({ name: r.name, description: r.description, is_mandatory: r.is_mandatory, source: r.source }));
+      const ev = await createManualEvaluation(selected);
+      // Explicit even when it matches today's default — reproducibility
+      // matters here (Milestone 6: a fixed, documented evaluation date
+      // across all test submissions), not just "whatever day this was run."
+      const dated = await setEvaluationDate(ev.id, evaluationDate);
+      setEvaluation(dated);
+      setStep(2);
+    } catch (err) {
+      setCreateError(err.message);
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const handleRun = async () => {
     setRunning(true);
@@ -178,7 +264,18 @@ export default function NewEvaluation() {
         </div>
       </Reveal>
       {step === 1 ? (
-        <StepOne evaluation={evaluation} loading={loading} error={loadError} onNext={() => setStep(2)} />
+        <StepOne
+          requirements={requirements}
+          checkedIds={checkedIds}
+          onToggle={toggleRequirement}
+          loading={loading}
+          error={loadError}
+          creating={creating}
+          createError={createError}
+          evaluationDate={evaluationDate}
+          onEvaluationDateChange={setEvaluationDateInput}
+          onNext={handleNext}
+        />
       ) : (
         <StepTwo
           files={files}

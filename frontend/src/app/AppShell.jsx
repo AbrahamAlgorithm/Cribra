@@ -22,7 +22,7 @@ export default function AppShell() {
   const navigate = useNavigate();
   return (
     <div className="flex min-h-screen bg-paper text-fg">
-      <aside className="fixed inset-y-0 left-0 z-40 flex w-[232px] flex-col border-r border-dashed border-[var(--color-border)] bg-bg">
+      <aside className="fixed inset-y-0 left-0 z-40 flex w-[232px] flex-col border-r border-dashed border-[var(--color-border)] bg-bg print:hidden">
         <Link to="/" className="flex items-center gap-2 px-6 pt-7 pb-8">
           <CribraMark className="h-5 w-auto" />
           <span style={{ fontFamily: "var(--font-sans)", fontWeight: 500, fontSize: 17 }}>Cribra</span>
@@ -58,7 +58,7 @@ export default function AppShell() {
           </button>
         </div>
       </aside>
-      <main className="ml-[232px] min-h-screen flex-1">
+      <main className="ml-[232px] min-h-screen flex-1 print:ml-0">
         <Outlet />
       </main>
     </div>
