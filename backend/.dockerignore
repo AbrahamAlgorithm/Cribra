@@ -1,0 +1,31 @@
+# Runtime-generated data — chroma is rebuilt by scripts/ensure_corpus.py at
+# container startup; uploads and vision_cache are per-instance scratch state.
+data/
+
+# Local environment / secrets — never bake these into an image.
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# Tests and dev-only docs — not needed at runtime.
+tests/
+Milestone Update/
+*.md
+!README.md
+
+# OS / editor / VCS
+.DS_Store
+.vscode/
+.idea/
+.git/
+.claude/
+
+# Real field-collected documents — never in an image.
+tests/fixtures/real/

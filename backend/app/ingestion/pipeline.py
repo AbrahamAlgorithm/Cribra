@@ -22,6 +22,7 @@ files; flagged in the Milestone 2 update doc for a scoping decision.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from app.ingestion import docx_extractor, page_resolver, pdf_extractor, preprocess
@@ -33,6 +34,16 @@ _PAGE_EXTRACTORS = {
     ".pdf": pdf_extractor.extract_pages,
     ".docx": docx_extractor.extract_pages,
 }
+
+# Certificate-type segments each cost one OpenAI structured-extraction call
+# (field_extractor.process_segment); non-certificate segments return
+# instantly (no I/O), so submitting every segment to the pool uniformly is
+# simplest and harmless. Threads, not asyncio, so process_document's public
+# signature stays plain sync — no changes needed anywhere that calls it.
+# Mirrors page_resolver.py's concurrency cap for the same 30,000 TPM account
+# limit. ThreadPoolExecutor.map preserves input order despite concurrent
+# execution, so segment ordering in the result is unaffected.
+_MAX_CONCURRENT_FIELD_EXTRACTIONS = 5
 
 
 def process_document(path: str | Path) -> list[ExtractedDocument]:
@@ -58,4 +69,5 @@ def process_document(path: str | Path) -> list[ExtractedDocument]:
         for segment in segments
     ]
 
-    return [process_segment(segment) for segment in segments_with_methods]
+    with ThreadPoolExecutor(max_workers=_MAX_CONCURRENT_FIELD_EXTRACTIONS) as pool:
+        return list(pool.map(process_segment, segments_with_methods))

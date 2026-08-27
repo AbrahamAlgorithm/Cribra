@@ -23,14 +23,20 @@ def page_count(path: str | Path) -> int:
         return doc.page_count
 
 
-def render_page_image(path: str | Path, page_number: int, zoom: float = 2.0) -> bytes:
+def render_page_image(path: str | Path, page_number: int, zoom: float = 2.0, rotation: int = 0) -> bytes:
     """Rasterize a single page (0-indexed) to PNG bytes for GPT-4o vision input.
 
     zoom=2.0 roughly doubles the default 72 DPI render to ~144 DPI, which is
     enough for a vision model to read certificate text reliably without
     producing an unnecessarily large image.
+
+    `rotation` (0/90/180/270) exists for page_resolver.py's refusal-retry
+    path: a real genuinely upside-down scan in the field-collected bundle
+    got a flat refusal from GPT-4o at 0deg, and rotating to the correct
+    orientation resolved it on the first try — see page_resolver.py.
     """
     with fitz.open(path) as doc:
         page = doc[page_number]
-        pixmap = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
+        matrix = fitz.Matrix(zoom, zoom).prerotate(rotation)
+        pixmap = page.get_pixmap(matrix=matrix)
         return pixmap.tobytes("png")

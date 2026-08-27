@@ -49,6 +49,31 @@ Interactive API docs: http://127.0.0.1:8000/docs
 pytest
 ```
 
+## Run with Docker
+
+```bash
+cp .env.example .env
+# then edit .env and set OPENAI_API_KEY
+
+docker compose up
+```
+
+The container ingests the requirement corpus (PPA 2007, BPP SBD, the default
+checklist) into ChromaDB on first start (`scripts/ensure_corpus.py`) — a
+named volume persists it, so subsequent restarts skip re-ingestion. Verify:
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+Building/running the image directly (without compose) works the same way,
+but without persistence across container restarts:
+
+```bash
+docker build -t cribra-backend .
+docker run -p 8080:8080 --env-file .env cribra-backend
+```
+
 ## Project Layout
 
 ```
@@ -61,9 +86,12 @@ app/
   reasoning/       Prompts, deterministic validation rules, LLM evaluator
   models/          Domain model (Evaluation, Requirement, Submission)
   storage/         Job/evaluation store
+scripts/           One-off/startup scripts (e.g. corpus ingestion for Docker)
 tests/             pytest suites + fixtures
 evaluation/        Evaluation harness (Precision/Recall/F1 vs expert ground truth)
 data/chroma/       Persistent ChromaDB storage (gitignored)
+Dockerfile         Container image for the backend
+docker-compose.yml Local run with a persisted ChromaDB volume
 ```
 
 ## Status

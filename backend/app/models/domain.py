@@ -28,6 +28,12 @@ class Requirement(BaseModel):
     source: RequirementSource
 
 
+# Named alias (Milestone 5) so routes_status.py's StatusResponse can share
+# this exact set of values with Evaluation.status rather than repeating the
+# literal list in a second place that could drift out of sync.
+EvaluationStatus = Literal["pending", "ingesting", "retrieving", "evaluating", "generating_report", "complete", "failed"]
+
+
 class Evaluation(BaseModel):
     """Owns a single evaluation session — replaces the earlier 'Tender' concept.
 
@@ -39,9 +45,7 @@ class Evaluation(BaseModel):
     requirements: list[Requirement]
     submission_id: str | None = None
     evaluation_date: date
-    status: Literal[
-        "pending", "ingesting", "retrieving", "evaluating", "generating_report", "complete", "failed"
-    ] = "pending"
+    status: EvaluationStatus = "pending"
     report: "ComplianceReport | None" = None
 
 

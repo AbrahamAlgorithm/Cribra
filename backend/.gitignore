@@ -1,12 +1,17 @@
 # Environment — never commit secrets
 .env
 
-# Internal build docs — not committed
-PROMPTS.md
-SPEC.md
-newspec.md
-phases.md
+# Internal build docs — not committed (README.md is the exception)
+*.md
+!README.md
 Milestone Update/
+.claude/
+
+# One-off manual real-data validation scripts (not part of the app)
+test.py
+compare_ocr_vs_vision.py
+dump_page_range.py
+locate_certificates.py
 
 # Python
 __pycache__/
@@ -27,10 +32,19 @@ data/uploads/*
 data/vision_cache/*
 !data/vision_cache/.gitkeep
 
-# Real field-collected documents (contractor submissions, BPP SBD) — contain
-# real company/personal data, never commit these
+# Real field-collected documents (contractor submissions, BPP SBD)
 tests/fixtures/real/*
 !tests/fixtures/real/.gitkeep
+
+# Expert ground-truth review (real company/personal data — same reasoning as
+# tests/fixtures/real/ above)
+COMPANY PROFILE CHECK CONTRACTORs*.pdf
+
+# Evaluation outputs — contain real extracted data (company names, RC
+# numbers, TINs, financial figures) from the real submissions above; local
+# artifacts only, not committed.
+evaluation/results/*
+!evaluation/results/.gitkeep
 
 # OS / editor
 .DS_Store

@@ -99,6 +99,33 @@ def test_normalize_whitespace_collapses_spaces_and_blank_lines():
     assert result == "Hello world\n\nFoo bar"
 
 
+def test_strip_invisible_characters_removes_zero_width_chars():
+    # Real bug found in Milestone 3: a Word-exported PDF's auto-numbered
+    # clause line ("1.0") had a trailing zero-width space that survived
+    # str.strip(), silently breaking exact-match regexes downstream.
+    text = "1.0\u200bScope of tender\u200c\n\ufeffSecond line\u200d"
+    result = preprocess.strip_invisible_characters(text)
+    assert "\u200b" not in result
+    assert "\u200c" not in result
+    assert "\u200d" not in result
+    assert "\ufeff" not in result
+    assert result == "1.0Scope of tender\nSecond line"
+
+
+def test_clean_text_removes_invisible_characters():
+    text = "1.0\u200b\nScope of tender"
+    result = preprocess.clean_text(text)
+    assert "\u200b" not in result
+
+
+def test_clean_pages_removes_invisible_characters_before_page_number_check():
+    # A page-number-only line contaminated with a trailing invisible
+    # character must still be recognized and stripped.
+    pages = ["Real content", "42\u200b"]
+    result = preprocess.clean_pages(pages)
+    assert "42" not in result[1]
+
+
 def test_strip_page_numbers_removes_standalone_number_lines():
     text = "Real content\nPage 3 of 10\n42\nMore content"
     result = preprocess.strip_page_numbers(text)

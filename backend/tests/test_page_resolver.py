@@ -62,7 +62,7 @@ def test_resolve_pages_sufficient_text_never_calls_vision(monkeypatch):
 def test_resolve_pages_insufficient_text_uses_vision(monkeypatch, tmp_path):
     fake_client = _FakeAsyncOpenAIClient("TAX CLEARANCE CERTIFICATE\nTCC998877")
     monkeypatch.setattr(page_resolver, "_get_async_client", lambda: fake_client)
-    monkeypatch.setattr(page_resolver, "render_page_image", lambda path, index: b"fake-png-bytes")
+    monkeypatch.setattr(page_resolver, "render_page_image", lambda path, index, rotation=0: b"fake-png-bytes")
 
     pdf_path = tmp_path / "bundle.pdf"
     pdf_path.write_bytes(b"%PDF-1.4 fake")
@@ -77,7 +77,7 @@ def test_resolve_pages_insufficient_text_uses_vision(monkeypatch, tmp_path):
 def test_resolve_pages_caches_vision_result_by_image_hash(monkeypatch, tmp_path):
     fake_client = _FakeAsyncOpenAIClient("cached transcription")
     monkeypatch.setattr(page_resolver, "_get_async_client", lambda: fake_client)
-    monkeypatch.setattr(page_resolver, "render_page_image", lambda path, index: b"same-bytes-every-time")
+    monkeypatch.setattr(page_resolver, "render_page_image", lambda path, index, rotation=0: b"same-bytes-every-time")
 
     pdf_path = tmp_path / "bundle.pdf"
     pdf_path.write_bytes(b"%PDF-1.4 fake")
@@ -114,7 +114,7 @@ def test_resolve_pages_empty_input_returns_empty():
 def test_resolve_pages_preserves_order_across_mixed_pages(monkeypatch, tmp_path):
     fake_client = _FakeAsyncOpenAIClient("vision text")
     monkeypatch.setattr(page_resolver, "_get_async_client", lambda: fake_client)
-    monkeypatch.setattr(page_resolver, "render_page_image", lambda path, index: f"page-{index}".encode())
+    monkeypatch.setattr(page_resolver, "render_page_image", lambda path, index, rotation=0: f"page-{index}".encode())
 
     pdf_path = tmp_path / "bundle.pdf"
     pdf_path.write_bytes(b"%PDF-1.4 fake")
@@ -127,6 +127,85 @@ def test_resolve_pages_preserves_order_across_mixed_pages(monkeypatch, tmp_path)
     assert methods == ["text", "vision", "text", "vision"]
     assert texts[0] == sufficient
     assert texts[2] == sufficient
+
+
+# --- refusal detection + rotation retry ---------------------------------------
+# Real finding on the field-collected bundle: a genuinely upside-down scan of
+# an official certificate (with a QR code) got a flat, deterministic refusal
+# from GPT-4o at 0deg ("I'm sorry, I can't assist with that") on 3/3 live
+# attempts. Rotating the same image 180deg (correcting the orientation)
+# transcribed it correctly. A refusal must never be cached or treated as real
+# page content — see page_resolver.py's _transcribe_page.
+
+
+def test_looks_like_refusal_detects_common_refusal_phrasing():
+    assert page_resolver._looks_like_refusal("I'm sorry, I can't assist with that.")
+    assert page_resolver._looks_like_refusal("I cannot help with that request.")
+    # Found via real-data validation on Technical_Submission_3.pdf (Milestone 6
+    # prep): this phrasing slipped through the original marker list entirely
+    # and was cached as if it were real page content.
+    assert page_resolver._looks_like_refusal("I'm unable to transcribe the content of the image.")
+
+
+def test_looks_like_refusal_does_not_flag_real_transcription():
+    real_text = "TAX CLEARANCE CERTIFICATE\nFederal Inland Revenue Service\nTCC998877"
+    assert not page_resolver._looks_like_refusal(real_text)
+
+
+def test_transcribe_page_retries_rotation_on_refusal_and_succeeds(monkeypatch, tmp_path):
+    # First rotation (0deg) refuses; second rotation (180deg) succeeds —
+    # mirrors exactly what was found on the real document.
+    responses = iter(["I'm sorry, I can't assist with that.", "BUREAU OF PUBLIC PROCUREMENT\nInterim Registration Report"])
+
+    class _SequencedFakeChatAPI:
+        def __init__(self):
+            self.calls: list[dict] = []
+
+        async def create(self, **kwargs):
+            self.calls.append(kwargs)
+            return SimpleNamespace(choices=[_FakeChoice(next(responses))])
+
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=_SequencedFakeChatAPI()))
+    monkeypatch.setattr(page_resolver, "_get_async_client", lambda: fake_client)
+    monkeypatch.setattr(
+        page_resolver,
+        "render_page_image",
+        lambda path, index, rotation=0: f"rotation-{rotation}".encode(),
+    )
+
+    pdf_path = tmp_path / "bundle.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 fake")
+
+    result = page_resolver.resolve_pages_sync(str(pdf_path), ["short"])
+
+    assert "Interim Registration Report" in result[0][0]
+    assert result[1] == ["vision"]
+    # Two real calls (one refusal at 0°, one success at 180°) — proves the
+    # refusal wasn't cached and silently reused for the second attempt.
+    assert len(fake_client.chat.completions.calls) == 2
+
+
+def test_transcribe_page_gives_up_and_returns_empty_if_all_rotations_refuse(monkeypatch, tmp_path, caplog):
+    import logging
+
+    fake_client = _FakeAsyncOpenAIClient("I'm sorry, I can't assist with that.")
+    monkeypatch.setattr(page_resolver, "_get_async_client", lambda: fake_client)
+    monkeypatch.setattr(
+        page_resolver,
+        "render_page_image",
+        lambda path, index, rotation=0: f"rotation-{rotation}".encode(),
+    )
+
+    pdf_path = tmp_path / "bundle.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 fake")
+
+    with caplog.at_level(logging.ERROR, logger="app.ingestion.page_resolver"):
+        texts, methods = page_resolver.resolve_pages_sync(str(pdf_path), ["short"])
+
+    assert texts == [""]
+    assert methods == ["vision"]
+    assert len(fake_client.chat.completions.calls) == len(page_resolver._ROTATIONS_TO_TRY)
+    assert "refused" in caplog.text.lower()
 
 
 # --- vision_cache -------------------------------------------------------------

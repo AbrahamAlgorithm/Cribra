@@ -64,6 +64,39 @@ Return ONLY the transcribed text — no commentary, no JSON, no markdown \
 formatting.\
 """
 
+# A real, deterministic finding on the field-collected bundle: a genuinely
+# upside-down scan of an official certificate (with a QR code) got a flat
+# refusal from GPT-4o at 0deg — "I'm sorry, I can't assist with that" — on
+# 3/3 attempts, not a transient fluke. Rotating the same image 180deg
+# (correcting the orientation) transcribed it correctly on the first try.
+# Presumed cause: the model's caution around unusual/inverted document
+# images with a QR code, not any actual sensitive content — the certificate
+# itself is an ordinary business compliance document. Retrying across
+# rotations is cheap and fixes the real case found; a refusal must never be
+# cached or treated as real page content, since that silently poisons
+# classification for that page on every future run.
+_ROTATIONS_TO_TRY = (0, 180, 90, 270)
+_REFUSAL_MARKERS = (
+    "i'm sorry",
+    "i am sorry",
+    "cannot assist",
+    "can't assist",
+    "cannot help with that",
+    "can't help with that",
+    "i cannot provide",
+    "i can't provide",
+    "unable to transcribe",
+    "unable to read",
+    "i'm unable to",
+    "i am unable to",
+)
+
+
+def _looks_like_refusal(text: str) -> bool:
+    stripped = text.strip().lower()
+    return len(stripped) < 200 and any(marker in stripped for marker in _REFUSAL_MARKERS)
+
+
 _async_client: AsyncOpenAI | None = None
 
 
@@ -98,12 +131,8 @@ async def _create_with_retry(**kwargs) -> object:
             await asyncio.sleep(delay)
 
 
-async def _transcribe_page_image(image_bytes: bytes) -> str:
-    image_hash = vision_cache.hash_image(image_bytes)
-    cached = vision_cache.get_cached(image_hash)
-    if cached is not None:
-        return cached
-
+async def _transcribe_image_bytes_raw(image_bytes: bytes) -> str:
+    """One raw vision call — no caching, no refusal handling. Callers: below."""
     image_b64 = base64.b64encode(image_bytes).decode("ascii")
     response = await _create_with_retry(
         model=MODEL,
@@ -119,9 +148,46 @@ async def _transcribe_page_image(image_bytes: bytes) -> str:
             },
         ],
     )
-    text = response.choices[0].message.content or ""
-    vision_cache.set_cached(image_hash, text)
-    return text
+    return response.choices[0].message.content or ""
+
+
+async def _transcribe_page(path: str, page_number: int) -> str:
+    """Transcribe a page via vision, retrying with rotation if the model refuses.
+
+    See the module-level comment above `_ROTATIONS_TO_TRY` for why rotation
+    is the retry strategy. A refusal is never cached and never returned as
+    real page text — if every rotation refuses, the page is left as empty
+    text (so it stays "Unclassified" downstream rather than silently
+    carrying a refusal message) and logged loudly for manual review.
+    """
+    for rotation in _ROTATIONS_TO_TRY:
+        image_bytes = render_page_image(path, page_number, rotation=rotation)
+        image_hash = vision_cache.hash_image(image_bytes)
+
+        cached = vision_cache.get_cached(image_hash)
+        if cached is not None and not _looks_like_refusal(cached):
+            return cached
+
+        text = await _transcribe_image_bytes_raw(image_bytes)
+        if not _looks_like_refusal(text):
+            vision_cache.set_cached(image_hash, text)
+            return text
+
+        logger.warning(
+            "GPT-4o vision refused page %d of %s at %d° rotation; trying next rotation.",
+            page_number,
+            path,
+            rotation,
+        )
+
+    logger.error(
+        "GPT-4o vision refused page %d of %s at every rotation tried %s. "
+        "Leaving page text empty for manual review — it will not be classified.",
+        page_number,
+        path,
+        _ROTATIONS_TO_TRY,
+    )
+    return ""
 
 
 async def resolve_pages(path: str, page_texts: list[str]) -> tuple[list[str], list[str]]:
@@ -147,8 +213,7 @@ async def resolve_pages(path: str, page_texts: list[str]) -> tuple[list[str], li
             )
             return text, "text"
         async with semaphore:
-            image_bytes = render_page_image(path, index)
-            transcribed = await _transcribe_page_image(image_bytes)
+            transcribed = await _transcribe_page(path, index)
             return transcribed, "vision"
 
     results = await asyncio.gather(*(resolve_one(i, t) for i, t in enumerate(page_texts)))

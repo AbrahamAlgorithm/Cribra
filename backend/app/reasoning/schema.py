@@ -16,6 +16,20 @@ from pydantic import BaseModel
 from app.models.domain import Evaluation, RequirementSource
 
 
+class OfficerReview(BaseModel):
+    """A procurement officer's own judgement on one requirement result.
+
+    Cribra is decision support, not a decision-maker (SPEC.md Section 1) —
+    this lets the officer record agreement or an override on the system's
+    finding, most relevant for Non-Compliant/Needs Review results. Purely
+    additive: absence (None) means the officer hasn't reviewed this item yet.
+    """
+
+    status: Literal["Compliant", "Non-Compliant", "Needs Review"]
+    note: str | None = None
+    reviewed_at: datetime
+
+
 class RequirementResult(BaseModel):
     requirement_id: str
     requirement_name: str
@@ -24,6 +38,7 @@ class RequirementResult(BaseModel):
     requirement_source: RequirementSource
     justification: str
     confidence_note: str | None = None
+    officer_review: OfficerReview | None = None
 
 
 class ComplianceSummary(BaseModel):
