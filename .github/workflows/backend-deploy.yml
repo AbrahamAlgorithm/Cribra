@@ -9,6 +9,7 @@ on:
   pull_request:
     paths:
       - "backend/**"
+  workflow_dispatch: {}
 
 env:
   PROJECT_ID: my-portfolio-492519
