@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+.env.*
+.git/
+.vscode/
+.idea/
+*.md
+.DS_Store

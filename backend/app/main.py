@@ -24,11 +24,17 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Local frontend dev server (Vite). Cribra has no browser-based auth/session
-# state yet, so an open-but-explicit localhost allowlist is sufficient here.
+# Local frontend dev server (Vite) + the deployed Cloud Run frontend. Cribra
+# has no browser-based auth/session state yet, so an open-but-explicit
+# allowlist is sufficient here.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://cribra-frontend-taqq76r7ua-uc.a.run.app",
+        "https://cribra-frontend-179103012566.us-central1.run.app",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
