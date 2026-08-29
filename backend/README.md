@@ -105,8 +105,3 @@ data/chroma/       Persistent ChromaDB storage (gitignored)
 Dockerfile         Container image for the backend
 docker-compose.yml Local run with a persisted ChromaDB volume
 ```
-
-## Status
-
-Milestone 0 (project scaffolding) complete. See SPEC.md Section 8 for the milestone
-roadmap; API endpoints beyond `/health` land in Milestones 1 and 5.
