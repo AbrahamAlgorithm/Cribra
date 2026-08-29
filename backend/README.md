@@ -8,6 +8,18 @@ report and makes the decision.
 The full, authoritative specification lives in [SPEC.md](SPEC.md). All LLM prompts are
 documented in [PROMPTS.md](PROMPTS.md).
 
+## Deployed
+
+- App: https://cribra-frontend-taqq76r7ua-uc.a.run.app
+- API: https://cribra-backend-taqq76r7ua-uc.a.run.app
+
+Both run on Google Cloud Run. The frontend bakes its API URL in at build
+time (see `frontend/.env.example`), so a backend redeploy under a new URL
+requires rebuilding the frontend image, not just redeploying it. Currently
+deployed manually (`docker build` → push to Artifact Registry → `gcloud run
+deploy`) rather than via the GitHub Actions workflow in this repo, which is
+blocked on a GitHub account billing issue unrelated to the code.
+
 ## Tech Stack
 
 Python 3.11+ · FastAPI · LangChain · GPT-4o (OpenAI) · PyMuPDF · python-docx ·
