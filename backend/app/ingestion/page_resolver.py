@@ -22,6 +22,10 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import os
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from pathlib import Path
 
 import openai
@@ -35,18 +39,6 @@ from app.ingestion.pdf_extractor import render_page_image
 logger = logging.getLogger(__name__)
 
 MODEL = "gpt-4o"
-
-# SPEC.md Section 8 specified "~15-20 in flight" assuming enough headroom on
-# the account's rate limit. Live-tested against the real 158-page bundle and
-# found this account is capped at 30,000 TPM for gpt-4o — 15 full-page
-# vision requests fired at once exhausts that immediately (measured: 30000/30000
-# used, a 923-token request rejected). Lowered to a concurrency this account
-# can actually sustain, plus retry-with-backoff below for the residual risk
-# of hitting the cap anyway.
-MAX_CONCURRENT_VISION_CALLS = 5
-
-_MAX_RATE_LIMIT_RETRIES = 6
-_RETRY_BASE_DELAY_SECONDS = 3.0
 
 # Mirrors PROMPTS.md Section 8 — keep in sync.
 _TRANSCRIBE_PROMPT = """\
@@ -97,13 +89,44 @@ def _looks_like_refusal(text: str) -> bool:
     return len(stripped) < 200 and any(marker in stripped for marker in _REFUSAL_MARKERS)
 
 
+_render_pool: ThreadPoolExecutor | None = None
+_render_pool_lock = threading.Lock()
+
+
+def _get_render_pool() -> ThreadPoolExecutor:
+    """Bounded pool for page rasterization.
+
+    Deliberately bounded rather than using asyncio's default executor: every
+    page of a bundle is rendered concurrently, and an unbounded fan-out holds
+    that many full-page pixmaps in memory at once — enough to get a container
+    OOM-killed on a 158-page bundle.
+    """
+    global _render_pool
+    with _render_pool_lock:
+        if _render_pool is None:
+            _render_pool = ThreadPoolExecutor(
+                max_workers=min(8, os.cpu_count() or 2),
+                thread_name_prefix="page-render",
+            )
+        return _render_pool
+
+
+async def _render(path: str, page_number: int, rotation: int) -> bytes:
+    return await asyncio.get_running_loop().run_in_executor(
+        _get_render_pool(), partial(render_page_image, path, page_number, rotation=rotation)
+    )
+
+
 _async_client: AsyncOpenAI | None = None
 
 
 def _get_async_client() -> AsyncOpenAI:
     global _async_client
     if _async_client is None:
-        _async_client = AsyncOpenAI(api_key=get_settings().openai_api_key)
+        _async_client = AsyncOpenAI(
+            api_key=get_settings().openai_api_key,
+            timeout=get_settings().openai_request_timeout_seconds,
+        )
     return _async_client
 
 
@@ -115,18 +138,19 @@ async def _create_with_retry(**kwargs) -> object:
     first version of this pipeline had no retry at all — one rate-limited
     page crashed the entire 158-page run instead of just backing off.
     """
-    for attempt in range(_MAX_RATE_LIMIT_RETRIES):
+    settings = get_settings()
+    for attempt in range(settings.openai_rate_limit_retries):
         try:
             return await _get_async_client().chat.completions.create(**kwargs)
         except openai.RateLimitError:
-            if attempt == _MAX_RATE_LIMIT_RETRIES - 1:
+            if attempt == settings.openai_rate_limit_retries - 1:
                 raise
-            delay = _RETRY_BASE_DELAY_SECONDS * (2**attempt)
+            delay = settings.openai_retry_base_delay_seconds * (2**attempt)
             logger.warning(
                 "Rate limited by OpenAI; retrying in %.1fs (attempt %d/%d).",
                 delay,
                 attempt + 1,
-                _MAX_RATE_LIMIT_RETRIES,
+                settings.openai_rate_limit_retries,
             )
             await asyncio.sleep(delay)
 
@@ -151,28 +175,57 @@ async def _transcribe_image_bytes_raw(image_bytes: bytes) -> str:
     return response.choices[0].message.content or ""
 
 
-async def _transcribe_page(path: str, page_number: int) -> str:
+async def _transcribe_page(
+    path: str, page_number: int, semaphore: asyncio.Semaphore, document_hash: str
+) -> tuple[str, bool]:
     """Transcribe a page via vision, retrying with rotation if the model refuses.
 
+    Returns (text, avoided_openai) — the flag feeds the cache hit-rate summary
+    logged by `resolve_pages`. It is true when no OpenAI call was made at all,
+    which covers both a cache hit and a page whose every rotation is a known
+    refusal; the latter costs nothing on a repeat run but is not a hit.
+
+    `semaphore` bounds concurrent OpenAI calls only. Rasterizing is CPU-bound
+    and has no rate limit, so it is deliberately outside the semaphore and off
+    the event loop: every page must be rendered just to compute its cache key,
+    and doing that inline made a fully-cached 158-page run take ~50s of pure
+    serialized CPU with no API calls at all.
+
     See the module-level comment above `_ROTATIONS_TO_TRY` for why rotation
-    is the retry strategy. A refusal is never cached and never returned as
-    real page text — if every rotation refuses, the page is left as empty
-    text (so it stays "Unclassified" downstream rather than silently
-    carrying a refusal message) and logged loudly for manual review.
+    is the retry strategy. A refusal is never returned as real page text — if
+    every rotation refuses, the page is left as empty text (so it stays
+    "Unclassified" downstream rather than silently carrying a refusal
+    message) and logged loudly for manual review.
     """
+    # Keyed by document + page, so a page already resolved costs one small
+    # file read and no rasterization at all.
+    resolved_key = vision_cache.page_key(document_hash, page_number)
+    already_resolved = vision_cache.get_cached(resolved_key)
+    if already_resolved is not None:
+        return already_resolved, True
+
+    called_openai = False
     for rotation in _ROTATIONS_TO_TRY:
-        image_bytes = render_page_image(path, page_number, rotation=rotation)
+        image_bytes = await _render(path, page_number, rotation)
         image_hash = vision_cache.hash_image(image_bytes)
+
+        if vision_cache.is_refusal_cached(image_hash):
+            continue
 
         cached = vision_cache.get_cached(image_hash)
         if cached is not None and not _looks_like_refusal(cached):
-            return cached
+            vision_cache.set_cached(resolved_key, cached)
+            return cached, True
 
-        text = await _transcribe_image_bytes_raw(image_bytes)
+        called_openai = True
+        async with semaphore:
+            text = await _transcribe_image_bytes_raw(image_bytes)
         if not _looks_like_refusal(text):
             vision_cache.set_cached(image_hash, text)
-            return text
+            vision_cache.set_cached(resolved_key, text)
+            return text, False
 
+        vision_cache.set_refusal(image_hash)
         logger.warning(
             "GPT-4o vision refused page %d of %s at %d° rotation; trying next rotation.",
             page_number,
@@ -187,7 +240,7 @@ async def _transcribe_page(path: str, page_number: int) -> str:
         path,
         _ROTATIONS_TO_TRY,
     )
-    return ""
+    return "", not called_openai
 
 
 async def resolve_pages(path: str, page_texts: list[str]) -> tuple[list[str], list[str]]:
@@ -198,9 +251,13 @@ async def resolve_pages(path: str, page_texts: list[str]) -> tuple[list[str], li
     ExtractedDocument.extraction_method in field_extractor.py).
     """
     is_pdf = Path(path).suffix.lower() == ".pdf"
-    semaphore = asyncio.Semaphore(MAX_CONCURRENT_VISION_CALLS)
+    semaphore = asyncio.Semaphore(get_settings().openai_vision_concurrency)
+    needs_vision = is_pdf and any(not is_text_sufficient(text) for text in page_texts)
+    document_hash = await asyncio.to_thread(vision_cache.hash_file, path) if needs_vision else ""
+    cache_hits = 0
 
     async def resolve_one(index: int, text: str) -> tuple[str, str]:
+        nonlocal cache_hits
         if is_text_sufficient(text):
             return text, "text"
         if not is_pdf:
@@ -212,14 +269,29 @@ async def resolve_pages(path: str, page_texts: list[str]) -> tuple[list[str], li
                 path,
             )
             return text, "text"
-        async with semaphore:
-            transcribed = await _transcribe_page(path, index)
-            return transcribed, "vision"
+        transcribed, avoided_openai = await _transcribe_page(path, index, semaphore, document_hash)
+        cache_hits += avoided_openai
+        return transcribed, "vision"
 
     results = await asyncio.gather(*(resolve_one(i, t) for i, t in enumerate(page_texts)))
     if not results:
         return [], []
     texts, methods = (list(item) for item in zip(*results))
+
+    # A silently-cold cache is the difference between a ~1 minute run and a
+    # rate-limit-bound ~10 minute one, and it has a non-obvious trigger: the
+    # cache is keyed by rendered image, so changing PDF_RENDER_ZOOM discards
+    # every entry at once. Report the hit rate so that stays visible.
+    vision_pages = sum(1 for method in methods if method == "vision")
+    if vision_pages:
+        logger.info(
+            "Page resolution: %d/%d pages needed vision — %d needed no OpenAI "
+            "call (cached), %d called OpenAI.",
+            vision_pages,
+            len(methods),
+            cache_hits,
+            vision_pages - cache_hits,
+        )
     return texts, methods
 
 

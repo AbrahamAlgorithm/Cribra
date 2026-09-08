@@ -11,6 +11,8 @@ from pathlib import Path
 
 import fitz  # PyMuPDF
 
+from app.config import get_settings
+
 
 def extract_pages(path: str | Path) -> list[str]:
     """Return the raw extracted text of each page, in order."""
@@ -23,18 +25,20 @@ def page_count(path: str | Path) -> int:
         return doc.page_count
 
 
-def render_page_image(path: str | Path, page_number: int, zoom: float = 2.0, rotation: int = 0) -> bytes:
+def render_page_image(path: str | Path, page_number: int, zoom: float | None = None, rotation: int = 0) -> bytes:
     """Rasterize a single page (0-indexed) to PNG bytes for GPT-4o vision input.
 
-    zoom=2.0 roughly doubles the default 72 DPI render to ~144 DPI, which is
-    enough for a vision model to read certificate text reliably without
-    producing an unnecessarily large image.
+    The default zoom comes from config. `1.5` renders at about 108 DPI, which
+    is often a better speed/size tradeoff than 144 DPI for large scanned
+    bundles while still keeping certificate text legible.
 
     `rotation` (0/90/180/270) exists for page_resolver.py's refusal-retry
     path: a real genuinely upside-down scan in the field-collected bundle
     got a flat refusal from GPT-4o at 0deg, and rotating to the correct
     orientation resolved it on the first try — see page_resolver.py.
     """
+    if zoom is None:
+        zoom = get_settings().pdf_render_zoom
     with fitz.open(path) as doc:
         page = doc[page_number]
         matrix = fitz.Matrix(zoom, zoom).prerotate(rotation)

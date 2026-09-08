@@ -7,6 +7,15 @@ services:
       - .env
     volumes:
       - chroma_data:/app/data/chroma
+      # Bind-mounted, not named volumes: the vision cache is the single
+      # biggest determinant of run time (a cold 158-page scanned bundle is
+      # rate-limit-bound for ~10min against a 30k TPM account; the same run
+      # warm takes 40-70s). Binding to the host shares one cache between
+      # `docker compose` and direct `uvicorn` runs, so warming it either way
+      # warms it for both. A named volume would start empty on every
+      # `docker compose down -v` and silently re-pay the full cost.
+      - ./data/vision_cache:/app/data/vision_cache
+      - ./data/uploads:/app/data/uploads
 
 volumes:
   chroma_data:

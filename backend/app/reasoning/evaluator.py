@@ -39,10 +39,10 @@ logger = logging.getLogger(__name__)
 
 MODEL = "gpt-4o"
 
-# Rate limiting was a real, repeated finding in Milestone 2 (this account is
-# capped at 30,000 TPM for gpt-4o) — max_retries is langchain_openai's own
-# built-in backoff, set explicitly rather than trusting the library default.
-_MAX_RETRIES = 6
+# Keep LangChain's retry policy bounded as well as the raw OpenAI clients'
+# policy. Six exponential retries can keep one evaluation apparently stuck
+# for many minutes when the account is rate limited.
+_MAX_RETRIES = 3
 
 # A single evidentiary segment's full text can alone exceed this account's
 # 30,000 TPM cap once combined with retrieved source text and prompt
@@ -58,18 +58,6 @@ _MAX_RETRIES = 6
 # statement of financial position) before the more voluminous notes/schedules.
 _MAX_SUBMISSION_CONTENT_CHARS = 50_000
 
-# 4A certificate checks are local/deterministic (no LLM call) so only the 4B
-# evidentiary requirements actually hit OpenAI here — but each of those can
-# carry up to ~12,500 tokens of submission content alone (see
-# _MAX_SUBMISSION_CONTENT_CHARS above) plus retrieved source text, much
-# heavier per call than a single vision transcription or field-extraction
-# call. Kept well below page_resolver.py's concurrency of 5 to leave
-# headroom under the same 30,000 TPM account cap — two full-sized calls
-# concurrently already approaches the cap on their own. Threads, not
-# asyncio, so evaluate_requirements' public signature stays plain sync;
-# ChatOpenAI's own max_retries above is the safety net for any transient
-# 429s a burst still triggers.
-_MAX_CONCURRENT_EVALUATIONS = 3
 _AUDITED_ACCOUNTS_REQUIREMENT_NAME = "Audited Accounts"
 _AUDITED_STATEMENT_YEAR = re.compile(
     r"audited\s+financial\s+statements?\s+for\s+the\s+(?:year|period)\s+ended"
@@ -127,7 +115,13 @@ def _get_llm() -> ChatOpenAI:
     global _llm
     if _llm is None:
         settings = get_settings()
-        _llm = ChatOpenAI(model=MODEL, temperature=0, api_key=settings.openai_api_key, max_retries=_MAX_RETRIES)
+        _llm = ChatOpenAI(
+            model=MODEL,
+            temperature=0,
+            api_key=settings.openai_api_key,
+            max_retries=_MAX_RETRIES,
+            timeout=settings.openai_request_timeout_seconds,
+        )
     return _llm
 
 
@@ -376,7 +370,8 @@ def evaluate_requirements(
     order in the returned list regardless.
     """
     evaluate_one = partial(evaluate_requirement, extracted_documents=extracted_documents, evaluation_date=evaluation_date)
-    with ThreadPoolExecutor(max_workers=_MAX_CONCURRENT_EVALUATIONS) as pool:
+    max_workers = get_settings().openai_evaluation_concurrency
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
         return list(pool.map(evaluate_one, requirements))
 
 

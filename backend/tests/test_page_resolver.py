@@ -10,6 +10,7 @@ API is exercised in a separate manual smoke test against the real document.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -134,8 +135,10 @@ def test_resolve_pages_preserves_order_across_mixed_pages(monkeypatch, tmp_path)
 # an official certificate (with a QR code) got a flat, deterministic refusal
 # from GPT-4o at 0deg ("I'm sorry, I can't assist with that") on 3/3 live
 # attempts. Rotating the same image 180deg (correcting the orientation)
-# transcribed it correctly. A refusal must never be cached or treated as real
-# page content — see page_resolver.py's _transcribe_page.
+# transcribed it correctly. A refusal must never be treated as real page
+# content; because it is deterministic per image, the *fact* of it is recorded
+# so a repeat run skips that rotation instead of re-paying the call — see
+# page_resolver.py's _transcribe_page and vision_cache.is_refusal_cached.
 
 
 def test_looks_like_refusal_detects_common_refusal_phrasing():
@@ -183,6 +186,63 @@ def test_transcribe_page_retries_rotation_on_refusal_and_succeeds(monkeypatch, t
     # Two real calls (one refusal at 0°, one success at 180°) — proves the
     # refusal wasn't cached and silently reused for the second attempt.
     assert len(fake_client.chat.completions.calls) == 2
+
+
+def test_second_run_skips_a_known_refusal_instead_of_re_calling_it(monkeypatch, tmp_path):
+    """A refused rotation costs an API call once, not once per run.
+
+    Refusals are deterministic per image, so re-asking is pure waste — and on
+    a fully scanned bundle that waste is paid against the account's TPM
+    ceiling, which is what actually bounds a run's wall-clock time.
+    """
+    responses = iter(["I'm sorry, I can't assist with that.", "BUREAU OF PUBLIC PROCUREMENT"])
+
+    class _SequencedFakeChatAPI:
+        def __init__(self):
+            self.calls: list[dict] = []
+
+        async def create(self, **kwargs):
+            self.calls.append(kwargs)
+            return SimpleNamespace(choices=[_FakeChoice(next(responses))])
+
+    fake_client = SimpleNamespace(chat=SimpleNamespace(completions=_SequencedFakeChatAPI()))
+    monkeypatch.setattr(page_resolver, "_get_async_client", lambda: fake_client)
+    monkeypatch.setattr(
+        page_resolver,
+        "render_page_image",
+        lambda path, index, rotation=0: f"rotation-{rotation}".encode(),
+    )
+
+    pdf_path = tmp_path / "bundle.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 fake")
+
+    first = page_resolver.resolve_pages_sync(str(pdf_path), ["short"])
+    assert len(fake_client.chat.completions.calls) == 2
+
+    second = page_resolver.resolve_pages_sync(str(pdf_path), ["short"])
+
+    # Same text, and not one further call: the 0° refusal is remembered and
+    # skipped, the 180° success is served from cache.
+    assert second[0][0] == first[0][0]
+    assert len(fake_client.chat.completions.calls) == 2
+
+
+def test_a_cached_refusal_is_never_returned_as_page_text():
+    """A refusal must never become document content, cached or not."""
+    image_hash = vision_cache.hash_image(b"a-refused-page")
+    vision_cache.set_refusal(image_hash)
+
+    assert vision_cache.is_refusal_cached(image_hash)
+    assert vision_cache.get_cached(image_hash) is None
+
+
+def test_entries_cached_before_refusal_tracking_still_read_as_normal_text():
+    """The 400+ entries already on disk predate the `refused` flag."""
+    image_hash = vision_cache.hash_image(b"an-old-entry")
+    (vision_cache._cache_dir() / f"{image_hash}.json").write_text('{"text": "CAC CERTIFICATE"}')
+
+    assert not vision_cache.is_refusal_cached(image_hash)
+    assert vision_cache.get_cached(image_hash) == "CAC CERTIFICATE"
 
 
 def test_transcribe_page_gives_up_and_returns_empty_if_all_rotations_refuse(monkeypatch, tmp_path, caplog):

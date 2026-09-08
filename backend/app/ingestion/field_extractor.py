@@ -38,13 +38,6 @@ MODEL = "gpt-4o"
 _MIN_SUFFICIENT_CHARS = 200
 _MIN_ALPHANUMERIC_RATIO = 0.5
 
-# Live-tested against the real 158-page bundle (see page_resolver.py): this
-# account is capped at 30,000 TPM for gpt-4o, and a burst of vision calls
-# during segmentation can leave no headroom for the extraction calls that
-# follow immediately after. Same retry treatment as page_resolver.py.
-_MAX_RATE_LIMIT_RETRIES = 6
-_RETRY_BASE_DELAY_SECONDS = 3.0
-
 # Mirrors PROMPTS.md Section 6 — keep in sync.
 _TEXT_SYSTEM_PROMPT = """\
 You are extracting structured fields from a Nigerian government-issued \
@@ -97,7 +90,10 @@ _client: OpenAI | None = None
 def _get_client() -> OpenAI:
     global _client
     if _client is None:
-        _client = OpenAI(api_key=get_settings().openai_api_key)
+        _client = OpenAI(
+            api_key=get_settings().openai_api_key,
+            timeout=get_settings().openai_request_timeout_seconds,
+        )
     return _client
 
 
@@ -123,18 +119,19 @@ def _parse_llm_fields(raw_json: str) -> _LLMFields:
 
 def _create_with_retry(**kwargs) -> object:
     """Retry on 429 rate-limit errors with exponential backoff (sync)."""
-    for attempt in range(_MAX_RATE_LIMIT_RETRIES):
+    settings = get_settings()
+    for attempt in range(settings.openai_rate_limit_retries):
         try:
             return _get_client().chat.completions.create(**kwargs)
         except openai.RateLimitError:
-            if attempt == _MAX_RATE_LIMIT_RETRIES - 1:
+            if attempt == settings.openai_rate_limit_retries - 1:
                 raise
-            delay = _RETRY_BASE_DELAY_SECONDS * (2**attempt)
+            delay = settings.openai_retry_base_delay_seconds * (2**attempt)
             logger.warning(
                 "Rate limited by OpenAI; retrying in %.1fs (attempt %d/%d).",
                 delay,
                 attempt + 1,
-                _MAX_RATE_LIMIT_RETRIES,
+                settings.openai_rate_limit_retries,
             )
             time.sleep(delay)
 

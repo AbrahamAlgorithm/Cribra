@@ -40,6 +40,47 @@ cp .env.example .env
 # then edit .env and set OPENAI_API_KEY
 ```
 
+## Run time, and warming the vision cache
+
+The submission bundles are fully scanned, so every page needs one GPT-4o
+vision call, and what bounds a cold run is the account's tokens-per-minute
+ceiling rather than local CPU — on a 30,000 TPM account a cold 158-page
+bundle is rate-limited for roughly ten minutes. Measured on the real
+158-page submission:
+
+| | ingestion |
+|---|---|
+| cold cache | ~10 min (rate-limit bound), often failing |
+| warm cache | **8.7 s** |
+
+So warm the cache **before** a demo, never during one:
+
+```bash
+python scripts/warm_vision_cache.py tests/fixtures/real/Technical_Submission.pdf
+```
+
+It is resumable and safe to re-run — only missing pages are fetched, and
+`docker-compose.yml` bind-mounts the same directory, so warming on the host
+also warms the container.
+
+Two things to know about the cache, because both have bitten this project:
+
+- Resolved page text is keyed by **document fingerprint + page number**, so a
+  warm run reads small files and rasterizes nothing. Transcriptions are also
+  still keyed by rendered-image hash (which is what the rotation-retry path
+  needs), and that second key depends on `PDF_RENDER_ZOOM` — changing it
+  forces every page to be rendered again. Leave it at `2.0`. It is not a cost
+  lever either: `1.5` and `2.0` both resize to the same 6 tiles (1105 tokens)
+  on GPT-4o's side, so lowering it saves nothing and only costs fidelity.
+- Every run logs its hit rate (`Page resolution: N/M pages needed vision — X
+  needed no OpenAI call (cached), Y called OpenAI`). If `X` is 0 on a document
+  you have already processed, the cache is cold and the run will be slow —
+  check `PDF_RENDER_ZOOM` and that `data/vision_cache` is mounted.
+
+If you still see repeated `429 Too Many Requests` responses, lower
+`OPENAI_VISION_CONCURRENCY` and `OPENAI_FIELD_EXTRACTION_CONCURRENCY` to `1`.
+That trades throughput for reliability; it does not reduce total token cost.
+
 ## Run
 
 ```bash
@@ -72,7 +113,10 @@ docker compose up
 
 The container ingests the requirement corpus (PPA 2007, BPP SBD, the default
 checklist) into ChromaDB on first start (`scripts/ensure_corpus.py`) — a
-named volume persists it, so subsequent restarts skip re-ingestion. Verify:
+named volume persists it, so subsequent restarts skip re-ingestion.
+`data/vision_cache` and `data/uploads` are bind-mounted to the host, so the
+vision cache is shared with direct `uvicorn` runs and survives
+`docker compose down -v`. Verify:
 
 ```bash
 curl http://127.0.0.1:8000/health
